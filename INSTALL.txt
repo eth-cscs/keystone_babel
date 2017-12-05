@@ -2,5 +2,5 @@
   virtualenv .
   source bin/activate
   pip install -U pip setuptools
-  pip install -U python-openstackclient lxml oauthlib
+  pip install -U python-openstackclient lxml oauthlib flask
 
