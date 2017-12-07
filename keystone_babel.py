@@ -22,6 +22,9 @@ OS_INTERFACE = 'public'
 enable_ssl = True
 DEFAULT_DOMAIN = 'cscs' # for keystoneV2 only
 
+# TODO make this work for users getting the scoped token directly with a password
+#  For this most of the V2 work can be replicated
+
 def proxy():
     # replace url with that of the real keystone
     spliturl=list(urlsplit(request.url))
@@ -68,12 +71,12 @@ def v3tokens():
                            username=username,
                            password=password)
     sess = session.Session(auth=auth)
-    unscoped_token = sess.get_token()
+    token = sess.get_token()
 
     # patch original body
     del(body['auth']['identity'])
     body['auth']['identity'] = {"methods": ["token"],
-                                "token": {"id": unscoped_token}}
+                                "token": {"id": token}}
 
     # get scoped token
     r = requests.post('https://'+REAL_KEYSTONE+'/v3/auth/tokens', json=body, headers=headers)
@@ -88,7 +91,6 @@ def v2tokens():
     # parse request
     body = flask.request.get_json()
     headers = flask.request.headers
-    print "IN", body
 
     # Bypass requests without a password inside (e.g. for unscoped-to-scoped auth)
     if 'passwordCredentials' not in body['auth']:
@@ -99,12 +101,15 @@ def v2tokens():
     # Check if the request is for a scoped token:
     tenantId = None
     tenantName = None
+    isScoped = False
     if 'tenantId' in body['auth']: 
         tenantId = body['auth']['tenantId']
         tenantDomain = None
+        isScoped = True
     if 'tenantName' in body['auth']: 
         tenantName = body['auth']['tenantName']
         tenantDomain = DEFAULT_DOMAIN
+        isScoped = True
 
     # get unscoped token via SAML
     auth = V3Saml2Password(auth_url='https://'+REAL_KEYSTONE+'/v3',
@@ -118,9 +123,10 @@ def v2tokens():
                            password=password)
     sess = session.Session(auth=auth)
     token = sess.get_token()
-    print token
+    if isScoped: 
+        tenantID=sess.get_project_id()
 
-    # create new body
+    # create new body to get the catalog without the password
     newbody = {}
     newbody['auth'] = {}
     #for key in body['auth'].keys():
@@ -128,15 +134,12 @@ def v2tokens():
     #        newbody['auth'][key] = body['auth'][key]
     newbody['auth']['token'] = {}
     newbody['auth']['token']['id'] = token
-    print "BODY", newbody
-
-    #del(body['auth']['identity'])
-    #body['auth']['identity'] = {"methods": ["token"],
-    #                            "token": {"id": unscoped_token}}
+    if isScoped:
+        # Otherwise we get an empty service catalog and nothing works
+        newbody['auth']['tenantId'] = tenantID
 
     # resubmit request
     r = requests.post('https://'+REAL_KEYSTONE+'/v2.0/tokens', json=newbody, headers=headers)
-    print r.text
 
     # forward response
     return flask.Response(r.text, headers=dict(r.headers), status=r.status_code)
@@ -155,7 +158,7 @@ def other(url):
 if __name__ == "__main__":
     if enable_ssl:
         #app.run(host='0.0.0.0', port=13000, ssl_context=('yourserver.crt', 'yourserver.key'), debug=True)
-        app.run(host='0.0.0.0', port=13000, ssl_context='adhoc', debug=True)
+        app.run(host='0.0.0.0', port=13001, ssl_context='adhoc', debug=True)
     else:
         app.run(host='0.0.0.0', port=13000, debug=True)
 #EOF
