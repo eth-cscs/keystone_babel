@@ -158,7 +158,7 @@ def other(url):
 if __name__ == "__main__":
     if enable_ssl:
         #app.run(host='0.0.0.0', port=13000, ssl_context=('yourserver.crt', 'yourserver.key'), debug=True)
-        app.run(host='0.0.0.0', port=13001, ssl_context='adhoc', debug=True)
+        app.run(host='0.0.0.0', port=13000, ssl_context='adhoc', debug=True)
     else:
         app.run(host='0.0.0.0', port=13000, debug=True)
 #EOF
