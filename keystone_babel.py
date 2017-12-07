@@ -19,7 +19,8 @@ OS_IDENTITY_PROVIDER = 'cscskc'
 OS_IDENTITY_PROVIDER_URL = 'https://kc-tds.cscs.ch/auth/realms/cscs/protocol/saml/'
 OS_PROTOCOL = 'mapped'
 OS_INTERFACE = 'public'
-enable_ssl = False
+enable_ssl = True
+DEFAULT_DOMAIN = 'cscs' # for keystoneV2 only
 
 def proxy():
     # replace url with that of the real keystone
@@ -47,7 +48,7 @@ def proxy():
 
 #===============================================================================
 @app.route('/v3/auth/tokens', methods=['POST'])
-def tokens():
+def v3tokens():
     # parse request
     body = flask.request.get_json()
     headers = flask.request.headers
@@ -80,10 +81,71 @@ def tokens():
     # forward response
     return flask.Response(r.text, headers=dict(r.headers), status=r.status_code)
 
+
+#===============================================================================
+@app.route('/v2.0/tokens', methods=['POST'])
+def v2tokens():
+    # parse request
+    body = flask.request.get_json()
+    headers = flask.request.headers
+    print "IN", body
+
+    # Bypass requests without a password inside (e.g. for unscoped-to-scoped auth)
+    if 'passwordCredentials' not in body['auth']:
+        return proxy()
+    username = body['auth']['passwordCredentials']['username']
+    password = body['auth']['passwordCredentials']['password']
+
+    # Check if the request is for a scoped token:
+    tenantId = None
+    tenantName = None
+    if 'tenantId' in body['auth']: 
+        tenantId = body['auth']['tenantId']
+        tenantDomain = None
+    if 'tenantName' in body['auth']: 
+        tenantName = body['auth']['tenantName']
+        tenantDomain = DEFAULT_DOMAIN
+
+    # get unscoped token via SAML
+    auth = V3Saml2Password(auth_url='https://'+REAL_KEYSTONE+'/v3',
+                           identity_provider=OS_IDENTITY_PROVIDER,
+                           protocol=OS_PROTOCOL,
+                           identity_provider_url=OS_IDENTITY_PROVIDER_URL,
+                           project_id=tenantId,
+                           project_name=tenantName,
+                           project_domain_name=tenantDomain,
+                           username=username,
+                           password=password)
+    sess = session.Session(auth=auth)
+    token = sess.get_token()
+    print token
+
+    # create new body
+    newbody = {}
+    newbody['auth'] = {}
+    #for key in body['auth'].keys():
+    #    if key not in 'passwordCredentials':
+    #        newbody['auth'][key] = body['auth'][key]
+    newbody['auth']['token'] = {}
+    newbody['auth']['token']['id'] = token
+    print "BODY", newbody
+
+    #del(body['auth']['identity'])
+    #body['auth']['identity'] = {"methods": ["token"],
+    #                            "token": {"id": unscoped_token}}
+
+    # resubmit request
+    r = requests.post('https://'+REAL_KEYSTONE+'/v2.0/tokens', json=newbody, headers=headers)
+    print r.text
+
+    # forward response
+    return flask.Response(r.text, headers=dict(r.headers), status=r.status_code)
+
+
 # Do we need to implement / forward entire keystone API? Let's hope this is enough:
 # https://developer.openstack.org/api-ref/identity/v3/
 #===============================================================================
-@app.route('/<path:url>', methods=['POST','GET'])
+@app.route('/<path:url>')
 def other(url):
     return proxy()
 
