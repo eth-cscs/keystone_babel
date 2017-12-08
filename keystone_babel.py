@@ -55,6 +55,7 @@ def v3tokens():
     # parse request
     body = flask.request.get_json()
     headers = flask.request.headers
+    print body
 
     # Bypass requests without a password inside (e.g. for unscoped-to-scoped auth)
     if 'password' not in body['auth']['identity']:
@@ -144,6 +145,14 @@ def v2tokens():
     # forward response
     return flask.Response(r.text, headers=dict(r.headers), status=r.status_code)
 
+#===============================================================================
+@app.route('/v3')
+def v3():
+    resp = proxy()
+    # Replace remote keystone host with ourselves
+    content = resp.get_data().replace(REAL_KEYSTONE, request.host)
+    resp.set_data(content)
+    return resp
 
 # Do we need to implement / forward entire keystone API? Let's hope this is enough:
 # https://developer.openstack.org/api-ref/identity/v3/
