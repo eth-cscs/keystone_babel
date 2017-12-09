@@ -14,9 +14,9 @@ from urlparse import urlsplit, urlunsplit
 
 app = flask.Flask(__name__)
 
-REAL_KEYSTONE = 'pollux-tds.cscs.ch:13000'
+REAL_KEYSTONE = 'pollux.cscs.ch:13000'
 OS_IDENTITY_PROVIDER = 'cscskc'
-OS_IDENTITY_PROVIDER_URL = 'https://kc-tds.cscs.ch/auth/realms/cscs/protocol/saml/'
+OS_IDENTITY_PROVIDER_URL = 'https://kc.cscs.ch/auth/realms/cscs/protocol/saml/'
 OS_PROTOCOL = 'mapped'
 OS_INTERFACE = 'public'
 enable_ssl = True
@@ -31,6 +31,7 @@ def proxy():
     spliturl[0] = 'https'  # the real keystone is most likely behind SSL
     spliturl[1] = REAL_KEYSTONE
     url = urlunsplit(spliturl)
+    #print "PROXY"
 
     # do the request
     resp = requests.request(
@@ -55,7 +56,7 @@ def v3tokens():
     # parse request
     body = flask.request.get_json()
     headers = flask.request.headers
-    print body
+    #print "IN v3tokens", body
 
     # Bypass requests without a password inside (e.g. for unscoped-to-scoped auth)
     if 'password' not in body['auth']['identity']:
@@ -71,8 +72,12 @@ def v3tokens():
                            identity_provider_url=OS_IDENTITY_PROVIDER_URL,
                            username=username,
                            password=password)
+    #print auth.get_auth_state()
     sess = session.Session(auth=auth)
-    token = sess.get_token()
+    token = sess.get_token(auth)
+    #print auth.get_headers(sess)
+    #token = sess.get_auth_headers()['X-Auth-Token']
+    #print token
 
     # patch original body
     del(body['auth']['identity'])
@@ -148,9 +153,10 @@ def v2tokens():
 #===============================================================================
 @app.route('/v3')
 def v3():
+    #print "IN v3"
     resp = proxy()
     # Replace remote keystone host with ourselves
-    content = resp.get_data().replace(REAL_KEYSTONE, request.host)
+    content = resp.get_data(as_text=True).replace(REAL_KEYSTONE, request.host)
     resp.set_data(content)
     return resp
 
@@ -159,6 +165,7 @@ def v3():
 #===============================================================================
 @app.route('/<path:url>')
 def other(url):
+    #print "IN other"
     return proxy()
 
 # TODO: do we need to patch service catalog? Let's hope not!
