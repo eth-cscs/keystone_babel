@@ -1,6 +1,6 @@
-# Installation
+# Installation requires python-dev and/or python3-dev packages (in Ubuntu)
   virtualenv .
   source bin/activate
   pip install -U pip setuptools
-  pip install -U python-openstackclient lxml oauthlib flask
+  pip install -U python-openstackclient lxml oauthlib flask urlparse
 

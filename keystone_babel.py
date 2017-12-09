@@ -2,18 +2,47 @@
 # -*- coding: utf-8 -*-
 
 
+# This application is a Keystone proxy that masks a 2-step authentication
+#  process (SAML in this case, but OIDC is similar) behind a regular 
+#  username/password authentication
+# The reason for doing this is the fact that, even though federated
+#  authentication is supported in v3, and integrated in the python client,
+#  still many clients are unable to support it.
+# By deploying this "companion" service, you can use the standard keystone
+#  regularly and point to this service only whenever you have a client that
+#  does not implement the two steps.
+# There may be some limitations to this approach: e.g. you can only use it 
+#  with one single federated IdP, unless you implement a way to distinguish 
+#  between them by looking at the request (which is possible)
+
+# Changelog
+# v0.2 - 2017-12-09 - Pablo Fernandez (CSCS/ETHZ)
+#  - Proxy all requests to the original keystone
+#  - Implemented V2 for Cyberduck support
+#  - Operates only when the authentication comes with password (and proxy otherwise)
+#  - SSL support
+#
+# v0.1 - 2017-11-24 - Ole Schütt (MARVEL/EMPA)
+#  - First functional version
+#  - Takes the user password, performs the SAML exchange and gets the final token
+#  - Works with rclone
+
+# Libs
 import flask
 import requests
-
 from flask import request
-
 from keystoneauth1.extras._saml2 import V3Saml2Password
 from keystoneauth1.identity.v3 import Token
 from keystoneauth1 import session
-from urlparse import urlsplit, urlunsplit
+try:
+    import urlparse
+except ImportError:
+    import urllib.parse as urlparse
+
 
 app = flask.Flask(__name__)
 
+# Params
 REAL_KEYSTONE = 'pollux.cscs.ch:13000'
 OS_IDENTITY_PROVIDER = 'cscskc'
 OS_IDENTITY_PROVIDER_URL = 'https://kc.cscs.ch/auth/realms/cscs/protocol/saml/'
@@ -22,21 +51,20 @@ OS_INTERFACE = 'public'
 enable_ssl = True
 DEFAULT_DOMAIN = 'cscs' # for keystoneV2 only
 
-# TODO make this work for users getting the scoped token directly with a password
-#  For this most of the V2 work can be replicated
 
+#===============================================================================
+# Helper function to re-do the request we've received to the real Keystone 
 def proxy():
     # replace url with that of the real keystone
-    spliturl=list(urlsplit(request.url))
+    spliturl=list(urlparse.urlsplit(request.url))
     spliturl[0] = 'https'  # the real keystone is most likely behind SSL
     spliturl[1] = REAL_KEYSTONE
-    url = urlunsplit(spliturl)
+    url = urlparse.urlunsplit(spliturl)
     #print "PROXY"
 
     # do the request
     resp = requests.request(
         method=request.method,
-	#url=request.url.replace(FAKE_KEYSTONE, REAL_KEYSTONE),
         url=url,
         headers={key: value for (key, value) in request.headers if key != 'Host'},
         data=request.get_data(),
@@ -51,6 +79,12 @@ def proxy():
 
 
 #===============================================================================
+# This is the default landing place. We basically:
+#  1. Check if the request is a password request
+#  2. If it is, we get an unscoped token with SAML
+#  3. With the scoped token, we re-do the intial request replacing the password
+#      auth
+#  4. Return the output to the user
 @app.route('/v3/auth/tokens', methods=['POST'])
 def v3tokens():
     # parse request
@@ -61,6 +95,8 @@ def v3tokens():
     # Bypass requests without a password inside (e.g. for unscoped-to-scoped auth)
     if 'password' not in body['auth']['identity']:
         return proxy()
+
+    # Get the input from the body
     user = body['auth']['identity']['password']['user']
     username = user['name']
     password = user['password']
@@ -79,12 +115,12 @@ def v3tokens():
     #token = sess.get_auth_headers()['X-Auth-Token']
     #print token
 
-    # patch original body
+    # patch original body (and keep the rest of the request)
     del(body['auth']['identity'])
     body['auth']['identity'] = {"methods": ["token"],
                                 "token": {"id": token}}
 
-    # get scoped token
+    # get scoped token (or unscoped, depending on the original request)
     r = requests.post('https://'+REAL_KEYSTONE+'/v3/auth/tokens', json=body, headers=headers)
 
     # forward response
@@ -92,6 +128,9 @@ def v3tokens():
 
 
 #===============================================================================
+# This is to support Cyberduck, which uses by default the deprecated V2
+# It follows a similar process, but with just one request. Because of this, 
+#  we need to detect if the request is scoped or not and act accordingly
 @app.route('/v2.0/tokens', methods=['POST'])
 def v2tokens():
     # parse request
@@ -101,6 +140,8 @@ def v2tokens():
     # Bypass requests without a password inside (e.g. for unscoped-to-scoped auth)
     if 'passwordCredentials' not in body['auth']:
         return proxy()
+
+    # Get the input from the body
     username = body['auth']['passwordCredentials']['username']
     password = body['auth']['passwordCredentials']['password']
 
@@ -122,6 +163,7 @@ def v2tokens():
                            identity_provider=OS_IDENTITY_PROVIDER,
                            protocol=OS_PROTOCOL,
                            identity_provider_url=OS_IDENTITY_PROVIDER_URL,
+                           # The next 3 are for scoped tokens 
                            project_id=tenantId,
                            project_name=tenantName,
                            project_domain_name=tenantDomain,
@@ -130,16 +172,11 @@ def v2tokens():
     sess = session.Session(auth=auth)
     token = sess.get_token()
     if isScoped: 
+        # From now on, we just need to work with the Project ID, not the name
         tenantID=sess.get_project_id()
 
     # create new body to get the catalog without the password
-    newbody = {}
-    newbody['auth'] = {}
-    #for key in body['auth'].keys():
-    #    if key not in 'passwordCredentials':
-    #        newbody['auth'][key] = body['auth'][key]
-    newbody['auth']['token'] = {}
-    newbody['auth']['token']['id'] = token
+    newbody = {'auth' : {'token': {'id': token} } }
     if isScoped:
         # Otherwise we get an empty service catalog and nothing works
         newbody['auth']['tenantId'] = tenantID
@@ -151,6 +188,8 @@ def v2tokens():
     return flask.Response(r.text, headers=dict(r.headers), status=r.status_code)
 
 #===============================================================================
+# We seem to need to put ourselves in the response in this case, let's hope it's 
+#  the only place
 @app.route('/v3')
 def v3():
     #print "IN v3"
@@ -168,9 +207,10 @@ def other(url):
     #print "IN other"
     return proxy()
 
-# TODO: do we need to patch service catalog? Let's hope not!
+# TODO: do we need to patch the whole service catalog? Let's hope not!
 
 #===============================================================================
+# MAIN
 if __name__ == "__main__":
     if enable_ssl:
         #app.run(host='0.0.0.0', port=13000, ssl_context=('yourserver.crt', 'yourserver.key'), debug=True)
