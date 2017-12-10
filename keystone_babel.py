@@ -34,11 +34,6 @@ from flask import request
 from keystoneauth1.extras._saml2 import V3Saml2Password
 from keystoneauth1.identity.v3 import Token
 from keystoneauth1 import session
-try:
-    import urlparse
-except ImportError:
-    import urllib.parse as urlparse
-
 
 app = flask.Flask(__name__)
 
@@ -48,18 +43,21 @@ OS_IDENTITY_PROVIDER = 'cscskc'
 OS_IDENTITY_PROVIDER_URL = 'https://kc.cscs.ch/auth/realms/cscs/protocol/saml/'
 OS_PROTOCOL = 'mapped'
 OS_INTERFACE = 'public'
-enable_ssl = True
+enable_ssl = True   # Not needed if used in local machine from local clients
 DEFAULT_DOMAIN = 'cscs' # for keystoneV2 only
 
+### helper vars:
+REMOTE_HOST_URL="https://"+REAL_KEYSTONE+"/"
 
 #===============================================================================
 # Helper function to re-do the request we've received to the real Keystone 
 def proxy():
     # replace url with that of the real keystone
-    spliturl=list(urlparse.urlsplit(request.url))
-    spliturl[0] = 'https'  # the real keystone is most likely behind SSL
-    spliturl[1] = REAL_KEYSTONE
-    url = urlparse.urlunsplit(spliturl)
+    url=request.url.replace(request.host_url, REMOTE_HOST_URL)
+    #spliturl=list(urlparse.urlsplit(request.url))
+    #spliturl[0] = 'https'  # the real keystone is most likely behind SSL
+    #spliturl[1] = REAL_KEYSTONE
+    #url = urlparse.urlunsplit(spliturl)
     #print "PROXY"
 
     # do the request
@@ -102,15 +100,15 @@ def v3tokens():
     password = user['password']
 
     # get unscoped token via SAML
-    auth = V3Saml2Password(auth_url='https://'+REAL_KEYSTONE+'/v3',
+    auth = V3Saml2Password(auth_url=REMOTE_HOST_URL+'v3',
                            identity_provider=OS_IDENTITY_PROVIDER,
                            protocol=OS_PROTOCOL,
                            identity_provider_url=OS_IDENTITY_PROVIDER_URL,
                            username=username,
                            password=password)
-    #print auth.get_auth_state()
     sess = session.Session(auth=auth)
     token = sess.get_token(auth)
+    #print auth.get_auth_state()
     #print auth.get_headers(sess)
     #token = sess.get_auth_headers()['X-Auth-Token']
     #print token
@@ -121,7 +119,7 @@ def v3tokens():
                                 "token": {"id": token}}
 
     # get scoped token (or unscoped, depending on the original request)
-    r = requests.post('https://'+REAL_KEYSTONE+'/v3/auth/tokens', json=body, headers=headers)
+    r = requests.post(REMOTE_HOST_URL+'v3/auth/tokens', json=body, headers=headers)
 
     # forward response
     return flask.Response(r.text, headers=dict(r.headers), status=r.status_code)
@@ -159,7 +157,7 @@ def v2tokens():
         isScoped = True
 
     # get unscoped token via SAML
-    auth = V3Saml2Password(auth_url='https://'+REAL_KEYSTONE+'/v3',
+    auth = V3Saml2Password(auth_url=REMOTE_HOST_URL+'v3',
                            identity_provider=OS_IDENTITY_PROVIDER,
                            protocol=OS_PROTOCOL,
                            identity_provider_url=OS_IDENTITY_PROVIDER_URL,
@@ -182,7 +180,7 @@ def v2tokens():
         newbody['auth']['tenantId'] = tenantID
 
     # resubmit request
-    r = requests.post('https://'+REAL_KEYSTONE+'/v2.0/tokens', json=newbody, headers=headers)
+    r = requests.post(REMOTE_HOST_URL+'v2.0/tokens', json=newbody, headers=headers)
 
     # forward response
     return flask.Response(r.text, headers=dict(r.headers), status=r.status_code)
@@ -195,7 +193,7 @@ def v3():
     #print "IN v3"
     resp = proxy()
     # Replace remote keystone host with ourselves
-    content = resp.get_data(as_text=True).replace(REAL_KEYSTONE, request.host)
+    content = resp.get_data(as_text=True).replace(REMOTE_HOST_URL, request.host_url)
     resp.set_data(content)
     return resp
 
