@@ -21,6 +21,17 @@ You can use this application in two ways:
 1. In your own machine, as a client, without intervention from the SP
 2. Near your Keystone server, as a service provider, to help clients
 
+### Installation
+
+Installation requires python-dev and/or python3-dev packages (in Ubuntu).
+Then:
+```
+$ virtualenv .
+$ source bin/activate
+$ pip install -U pip setuptools
+$ pip install -U python-openstackclient lxml oauthlib flask 
+```
+
 ### Usage example
 
 1. Edit `keystone_babel.py` to match your setup.

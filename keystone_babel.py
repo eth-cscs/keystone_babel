@@ -1,21 +1,32 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-
 # This application is a Keystone proxy that masks a 2-step authentication
 #  process (SAML in this case, but OIDC is similar) behind a regular 
 #  username/password authentication
-# The reason for doing this is the fact that, even though federated
-#  authentication is supported in v3, and integrated in the python client,
-#  still many clients are unable to support it.
-# By deploying this "companion" service, you can use the standard keystone
-#  regularly and point to this service only whenever you have a client that
-#  does not implement the two steps.
-# There may be some limitations to this approach: e.g. you can only use it 
-#  with one single federated IdP, unless you implement a way to distinguish 
-#  between them by looking at the request (which is possible)
+
+#    Copyright (C) 2017, Empa, Switzerland (v0.1)
+#    Copyright (C) 2017, ETH Zuerich, Switzerland (v0.2 onwards)
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, version 3 of the License.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#    AUTHORS Ole Schuett & Pablo Fernandez
+#    DATE    December 11th, 2017
 
 # Changelog
+# v0.3 - 2017-12-11 - Pablo Fernandez (CSCS/ETHZ)
+#  - Added better documentation and license
+#
 # v0.2 - 2017-12-09 - Pablo Fernandez (CSCS/ETHZ)
 #  - Proxy all requests to the original keystone
 #  - Implemented V2 for Cyberduck support
@@ -23,7 +34,7 @@
 #  - SSL support
 #
 # v0.1 - 2017-11-24 - Ole Schütt (MARVEL/EMPA)
-#  - First functional version
+#  - First functional version, original idea
 #  - Takes the user password, performs the SAML exchange and gets the final token
 #  - Works with rclone
 
