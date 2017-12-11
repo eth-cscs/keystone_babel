@@ -43,7 +43,7 @@ OS_IDENTITY_PROVIDER = 'cscskc'
 OS_IDENTITY_PROVIDER_URL = 'https://kc.cscs.ch/auth/realms/cscs/protocol/saml/'
 OS_PROTOCOL = 'mapped'
 OS_INTERFACE = 'public'
-enable_ssl = True   # Not needed if used in local machine from local clients
+enable_ssl = False   # Not needed if used in local machine from local clients
 DEFAULT_DOMAIN = 'cscs' # for keystoneV2 only
 
 ### helper vars:
