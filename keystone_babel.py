@@ -45,6 +45,7 @@ from flask import request
 from keystoneauth1.extras._saml2 import V3Saml2Password
 from keystoneauth1.identity.v3 import Token
 from keystoneauth1 import session
+import time
 
 app = flask.Flask(__name__)
 
@@ -137,6 +138,9 @@ def v3tokens():
     user = body['auth']['identity']['password']['user']
     username = user['name']
     password = user['password']
+
+    # Log the new request
+    print request.remote_addr, "XXX", time.strftime('%d/%m/%Y %H:%M:%S'), "Authenticating user:", username
 
     # get unscoped token via SAML
     auth = V3Saml2Password(auth_url=REMOTE_HOST_URL+'v3',
