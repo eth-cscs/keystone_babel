@@ -60,6 +60,30 @@ DEFAULT_DOMAIN = 'cscs' # for keystoneV2 only
 ### helper vars:
 REMOTE_HOST_URL="https://"+REAL_KEYSTONE+"/"
 
+
+
+#===============================================================================
+# Helper function to prepare the headers before doing the request to the real server 
+def prep_client_headers(headers):
+    new_headers = {}
+    already_forwarded = ''
+    for (key, value) in headers:
+        if key == 'Host':
+            # Remove this header
+            continue
+        if key == 'X-Forwarded-For':
+            # Capture its contents for later (and do nothing else)
+            already_forwarded = value + ','
+            continue
+        # Otherwise just copy the falue
+        new_headers[key]=value
+
+    # Add the proper X-Forwarded-For
+    new_headers['X-Forwarded-For'] = already_forwarded + request.remote_addr
+    #print ("NEW HEADERS: ", new_headers)
+
+    return new_headers
+
 #===============================================================================
 # Helper function to re-do the request we've received to the real Keystone 
 def proxy():
@@ -71,15 +95,16 @@ def proxy():
     #url = urlparse.urlunsplit(spliturl)
     #print "PROXY"
 
-    # do the request
+    # do the request to the server
     resp = requests.request(
         method=request.method,
         url=url,
-        headers={key: value for (key, value) in request.headers if key != 'Host'},
+        headers=prep_client_headers(request.headers),
         data=request.get_data(),
         cookies=request.cookies,
         allow_redirects=False)
 
+    # Prepare response to client
     excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in resp.raw.headers.items()
                if name.lower() not in excluded_headers]
@@ -101,6 +126,9 @@ def v3tokens():
     headers = flask.request.headers
     #print "IN v3tokens", body
 
+    # Prep the headers for the request to the server
+    headers = prep_client_headers(headers)
+
     # Bypass requests without a password inside (e.g. for unscoped-to-scoped auth)
     if 'password' not in body['auth']['identity']:
         return proxy()
@@ -117,8 +145,12 @@ def v3tokens():
                            identity_provider_url=OS_IDENTITY_PROVIDER_URL,
                            username=username,
                            password=password)
-    sess = session.Session(auth=auth)
-    token = sess.get_token(auth)
+    # We should already have the right headers available, just take this one:
+    sess = session.Session(auth=auth, additional_headers={'X-Forwarded-For': headers['X-Forwarded-For']})
+    try:
+        token = sess.get_token(auth)
+    except:
+        return flask.Response("Error authenticating, maybe wrong password?", status=401, mimetype='application/json')
     #print auth.get_auth_state()
     #print auth.get_headers(sess)
     #token = sess.get_auth_headers()['X-Auth-Token']
@@ -128,7 +160,7 @@ def v3tokens():
     del(body['auth']['identity'])
     body['auth']['identity'] = {"methods": ["token"],
                                 "token": {"id": token}}
-
+ 
     # get scoped token (or unscoped, depending on the original request)
     r = requests.post(REMOTE_HOST_URL+'v3/auth/tokens', json=body, headers=headers)
 
@@ -145,6 +177,9 @@ def v2tokens():
     # parse request
     body = flask.request.get_json()
     headers = flask.request.headers
+
+    # Prep the headers for the request to the server
+    headers = prep_client_headers(headers)
 
     # Bypass requests without a password inside (e.g. for unscoped-to-scoped auth)
     if 'passwordCredentials' not in body['auth']:
@@ -178,11 +213,16 @@ def v2tokens():
                            project_domain_name=tenantDomain,
                            username=username,
                            password=password)
-    sess = session.Session(auth=auth)
-    token = sess.get_token()
-    if isScoped: 
-        # From now on, we just need to work with the Project ID, not the name
-        tenantID=sess.get_project_id()
+    # We should already have the right headers available, just take this one:
+    sess = session.Session(auth=auth, additional_headers={'X-Forwarded-For': headers['X-Forwarded-For']})
+    try:
+        token = sess.get_token(auth)
+        if isScoped: 
+            # From now on, we just need to work with the Project ID, not the name
+            tenantID=sess.get_project_id()
+    except:
+        return flask.Response("Error authenticating, maybe wrong password?", status=401, mimetype='application/json')
+
 
     # create new body to get the catalog without the password
     newbody = {'auth' : {'token': {'id': token} } }
