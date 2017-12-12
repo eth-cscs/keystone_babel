@@ -46,6 +46,7 @@ from keystoneauth1.extras._saml2 import V3Saml2Password
 from keystoneauth1.identity.v3 import Token
 from keystoneauth1 import session
 import time
+import logging
 
 app = flask.Flask(__name__)
 
@@ -61,6 +62,9 @@ DEFAULT_DOMAIN = 'cscs' # for keystoneV2 only
 ### helper vars:
 REMOTE_HOST_URL="https://"+REAL_KEYSTONE+"/"
 
+# Logging
+app.logger.addHandler(logging.StreamHandler())
+app.logger.setLevel(logging.INFO)
 
 
 #===============================================================================
@@ -140,7 +144,8 @@ def v3tokens():
     password = user['password']
 
     # Log the new request
-    print request.remote_addr, "XXX", time.strftime('%d/%m/%Y %H:%M:%S'), "Authenticating user:", username
+    #print request.remote_addr, "XXX", time.strftime('%d/%m/%Y %H:%M:%S'), "Authenticating user:", username 
+    app.logger.info("%s - %s - Authenticating user: %s", request.remote_addr, time.strftime('%d/%m/%Y %H:%M:%S'),  username)
 
     # get unscoped token via SAML
     auth = V3Saml2Password(auth_url=REMOTE_HOST_URL+'v3',
@@ -192,6 +197,10 @@ def v2tokens():
     # Get the input from the body
     username = body['auth']['passwordCredentials']['username']
     password = body['auth']['passwordCredentials']['password']
+
+    # Log the new request
+    #print request.remote_addr, "XXX", time.strftime('%d/%m/%Y %H:%M:%S'), "Authenticating user:", username 
+    app.logger.info("%s - %s - Authenticating user: %s", request.remote_addr, time.strftime('%d/%m/%Y %H:%M:%S'),  username)
 
     # Check if the request is for a scoped token:
     tenantId = None
