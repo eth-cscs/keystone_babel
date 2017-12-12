@@ -24,6 +24,11 @@
 #    DATE    December 11th, 2017
 
 # Changelog
+#
+# v0.4 - 2017-12-12 - Massimo Benini & Pablo Fernandez (CSCS/ETHZ)
+#  - Logging ready for gunicorn
+#  - Added X-Forwarded-For to all server requests
+#
 # v0.3 - 2017-12-11 - Pablo Fernandez (CSCS/ETHZ)
 #  - Added better documentation and license
 #
