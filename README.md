@@ -38,7 +38,7 @@ $ pip install -U python-openstackclient lxml oauthlib flask
 2. Start the proxy server via `./keystone_babel.py`
 3. Configure your OpenStack client to use the proxy as auth-url:
 ```
-export OS_AUTH_URL="http://127.0.0.1:5000/v3"
+export OS_AUTH_URL="http://127.0.0.1:13000/v3"
 export OS_USERNAME="<your_username>"
 export OS_PASSWORD="<your_password>"
 export OS_PROJECT_ID="<your_project_id>"
