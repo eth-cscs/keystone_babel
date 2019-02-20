@@ -58,7 +58,7 @@ app = flask.Flask(__name__)
 # Params
 REAL_KEYSTONE = 'pollux.cscs.ch:13000'
 OS_IDENTITY_PROVIDER = 'cscskc'
-OS_IDENTITY_PROVIDER_URL = 'https://kc.cscs.ch/auth/realms/cscs/protocol/saml/'
+OS_IDENTITY_PROVIDER_URL = 'https://auth.cscs.ch/auth/realms/cscs/protocol/saml/'
 OS_PROTOCOL = 'mapped'
 OS_INTERFACE = 'public'
 enable_ssl = False   # Not needed if used in local machine from local clients
